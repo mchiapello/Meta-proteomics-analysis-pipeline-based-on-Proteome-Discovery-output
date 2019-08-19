@@ -1,0 +1,104 @@
+---
+title: "微生物种类和kegg统计"
+author: "XYZ"
+date: "2019/2/19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir="/media/sf_wheat-soil/soilprotein/panama/")
+```
+  
+  读取数据简单统计
+  
+```{r}
+df<-read.table("./panamNCBIkeggGhostKoala分析结果/user.out.top",sep = "\t",header = F)
+df2<-read.table("./panamMetaKeggGhostKoala分析结果/user.out.top",sep = "\t",header = F)
+# 使用NCBI数据库鉴定的蛋白在界层次上分类
+#    Animals  Archaea Bacteria    Fungi   Plants Protists 
+# 2       23       40     4214       53        3        9 
+table(df$V3)
+# 使用meta数据库鉴定的蛋白在界层次上分类
+#    Animals  Archaea Bacteria    Fungi   Plants Protists
+# 1      140      220    18736       82       70       49
+table(df2$V3)
+# 579
+paste0("使用NCBI数据库鉴定的蛋白来自",
+       length(unique(df[df$V3=="Archaea"|df$V3=="Bacteria"|df$V3=="Fungi","V5"])),"个属的微生物")
+# 965
+paste0("使用meta数据库鉴定的蛋白来自",
+       length(unique(df2[df$V3=="Archaea"|df$V3=="Bacteria"|df$V3=="Fungi","V5"])),"个属")
+```
+  
+  提取细菌在门分类水平上的堆叠柱状图  
+  
+  [堆叠柱状图各成分连线画法：突出展示组间物种丰度变化](https://mp.weixin.qq.com/s/FZWinr14RTs6YSUE_juaug)  
+  
+  
+```{r}
+ncbi<-df[df$V3=="Bacteria",]$V4
+meta<-df2[df$V3=="Bacteria",]$V4
+ncbiAll<-length(ncbi)
+metaAll<-length(meta)
+# 提取丰度前10
+ncbi<-sort(table(ncbi),decreasing = T)[1:10]
+meta<-sort(table(meta),decreasing = T)[1:10]
+# 保留共有的分类
+ncbi<-ncbi[-9]
+meta<-meta[-10]
+# 计算其它分类
+ncbi<-c(ncbi,ncbiAll-sum(ncbi))
+names(ncbi)[10]<-"Others"
+meta<-c(meta,metaAll-sum(meta))
+names(meta)[10]<-"Others"
+# 修改Gammaproteobacteria - Others为Gammaproteobacteria
+names(ncbi)[5]<-"Gammaproteobacteria"
+names(meta)[5]<-"Gammaproteobacteria"
+ncbi<-ncbi/sum(ncbi)
+meta<-meta/sum(meta)
+drawDf<-data.frame(group=rep(c("public","meta"),each=10),Phylum=c(names(ncbi),names(meta)),Abundance=c(ncbi,meta))
+# 根据group和phylum名称排序
+drawDf<-drawDf[with(drawDf, order(group, Phylum,decreasing = T)),]
+# 将public放在meta前面
+drawDf$group<-factor(drawDf$group,levels = c("public","meta"))
+# 计算连线的起点和终点
+link<-data.frame(publicY=c(0,cumsum(drawDf[drawDf$group=="public","Abundance"])),
+                 metaY=c(0,cumsum(drawDf[drawDf$group=="meta","Abundance"])))
+library(ggplot2)
+ggplot(drawDf) + 
+  geom_bar(aes(x=group, y=Abundance, fill=Phylum),stat = "identity", width=0.5, col='black')+
+  geom_segment(aes(x=1.25, xend=1.75, y=publicY, yend=metaY),data=link)+
+  theme(axis.title.x=element_blank(),text = element_text(size = 15))
+```
+
+  统计Blast比对情况，KEGG，GO注释数量
+  
+```{r}
+df<-read.table("./panamNCBIkeggGhostKoala分析结果/user_ko_definition.txt",sep = "\t",header = F)
+# 2423
+sum(df$V2!="")
+df2<-read.table("./panamMetaKeggGhostKoala分析结果/user.out.top",sep = "\t",header = F)
+# 7974
+sum(df2$V2!="")
+ncbiB2gTag<-read.table(text = "
+                       Tag,Count
+                       Blasted,4343
+                       Go Annotated,3199
+                       KEGG Annotated,2423",header = T,sep = ",",stringsAsFactors=F)
+metaB2gTag<-read.table(text = "
+                       Tag,Count
+                       Blasted,19057
+                       Go Annotated,13289
+                       KEGG Annotated,7974",header = T,sep = ",",stringsAsFactors=F)
+drawDf<-data.frame(Tag=c(ncbiB2gTag$Tag,metaB2gTag$Tag),Count=c(ncbiB2gTag$Count,metaB2gTag$Count),
+                   Database=rep(c("public","meta"),each=3))
+ggplot(drawDf,aes(x=Tag, y=Count, fill=Database)) + 
+  ylim(0, 25000)+
+  geom_bar(stat = "identity",position="dodge",width=0.8, col='black')+
+  # 添加数值
+  geom_text(aes(label=Count), position=position_dodge(width=0.8), hjust=-0.25)+
+  coord_flip() +
+  theme(axis.title.y=element_blank(),text = element_text(size = 15))
+```
+

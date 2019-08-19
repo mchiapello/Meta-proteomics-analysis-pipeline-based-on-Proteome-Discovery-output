@@ -1,0 +1,386 @@
+---
+title: "磷相关蛋白统计建树"
+author: "XYZ"
+date: "2019/3/1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir="/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果")
+```
+
+### 读取质谱输出数据
+```{r}
+df<-openxlsx::read.xlsx("/media/sf_wheat-soil/soilprotein/panama/PanamaNCBI/PanamaNCBI2ProteinsFix.xlsx")
+# df2<-read.xlsx("/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx")
+# saveRDS(df2, file="/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx.rds")
+df2<-readRDS("/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx.rds")
+suppressMessages(library(dplyr))
+df<-filter(df,Contaminant==F,`Exp..q-value:.Combined`<=0.01)
+df2<-filter(df2,Contaminant==F,`Exp..q-value:.Combined`<=0.01)
+df<-filter(df,Master=="Master Protein")
+df2<-filter(df2,Master=="Master Protein")
+```
+
+
+### 简单统计关于磷的蛋白数量
+```{r}
+# 统计ncbi
+goMapMf<-readRDS("goMapMf.rds")
+# 统计meta
+# goMapMf<-readRDS("../panamaMetablast2go分析结果/goMapMf.rds")
+library(GO.db)
+goNameMf <- AnnotationDbi::select(x=GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+library(stringr)
+
+# 统计关于磷的同一注释的蛋白数量
+phosphateMf<-goNameMf[str_detect(goNameMf$TERM, "phosphate") | 
+           str_detect(goNameMf$TERM, "phosphoric") |
+           str_detect(goNameMf$TERM, "phosphatase") |
+           str_detect(goNameMf$TERM, "lipase") |
+           str_detect(goNameMf$TERM, "phospholipase"),]
+# ncbi一共有41条与磷相关的注释
+# meta一共有43条与磷相关的注释
+# 选择phosphatase activity,phospholipase activity注释的序列建树比较合适
+# 根据kegg，4-phytase也属于磷酸酶
+length(unique(phosphateMf$TERM))
+sort(table(phosphateMf$TERM),decreasing = T)
+
+phosphateProteinMf<-goMapMf[str_detect(goNameMf$TERM, "phosphate") | 
+           str_detect(goNameMf$TERM, "phosphoric") |
+           str_detect(goNameMf$TERM, "phosphatase") |
+           str_detect(goNameMf$TERM, "lipase") |
+           str_detect(goNameMf$TERM, "phospholipase"),]
+# ncbi一共有400种与磷相关的蛋白
+# meta 一共有958种与磷相关的蛋白
+length(unique(phosphateProteinMf$Gene))
+```
+  
+### 制作蛋白注释表
+ 
+ 标识符id，序列seq
+ 标识符id，蛋白名称name，生物学过程注释bp，分子功能注释mf，细胞组分cc，酶编号ec，变化情况change
+```{r}
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果
+# cut -f 3,4,10,12 panamaNCBItable.txt > panamaNCBIgoEC.txt
+idNameGoEC<-read.table("panamaNCBIgoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+# 分割ec注释
+NCBIec<-tidyr::separate_rows(idNameGoEC[,c(1,4)],Enzyme.Codes,sep="; ")
+# 分析丰度变化情况
+judgeSignificance<-function(x,y){
+  if(is.na(x)|is.na(y)) return("no")
+  else if(x<=0.05){
+    if(y<=1/1.2) return ("down")
+    else if(y>=1.2) return ("up")
+    else return ("no")
+  }
+  else return("no")
+}
+change<-data.frame(id=df$Accession,change=mapply(judgeSignificance,
+                                                 df$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df$`Abundance.Ratio:.(low)./.(high)`))
+# 读取ncbi的注释
+readNCBIgo<-function(){
+  goMapBp<<-readRDS("goMapBp.rds")
+  goMapMf<<-readRDS("goMapMf.rds")
+  goMapCc<<-readRDS("goMapCc.rds")
+  goNameBp<<-AnnotationDbi::select(x=GO.db, keys = goMapBp$GO,  keytype = "GOID",columns = "TERM" )
+  goNameMf<<-AnnotationDbi::select(x=GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+  goNameCc<<-AnnotationDbi::select(x=GO.db, keys = goMapCc$GO,  keytype = "GOID",columns = "TERM" )
+}
+readNCBIgo()
+
+table1<-plyr::join_all(list(data.frame(id=goMapBp$Gene,bp=goNameBp$TERM),
+                           data.frame(id=goMapMf$Gene,mf=goNameMf$TERM),
+                           data.frame(id=goMapCc$Gene,cc=goNameCc$TERM),
+                           data.frame(id=idNameGoEC$SeqName,name=idNameGoEC$Description),
+                           data.frame(id=NCBIec$SeqName,ec=NCBIec$Enzyme.Codes)),
+                      type = 'full',
+                      by="id")
+```
+
+### 统计GO注释
+  
+  绘制dotplot
+  
+```{r}
+tempDf<-merge(change,data.frame(id=goMapBp$Gene,bp=goNameBp$TERM),by="id")
+drawDf<-data.frame()
+for(i in unique(tempDf$bp)){
+  drawDf<-rbind(drawDf,data.frame(bp=i,
+                          all=sum(tempDf$bp==i),
+                          up=sum(tempDf$change=="up" & tempDf$bp==i),
+                          down=sum(tempDf$change=="down" & tempDf$bp==i)))
+}
+drawDf<-cbind(drawDf,upRatio=drawDf$up/drawDf$all,
+              downRatio=drawDf$down/drawDf$all,
+              upVsDown=drawDf$up/(drawDf$down+1))
+drawDf<-drawDf[drawDf$all>20 & drawDf$up>10 &drawDf$upVsDown>2,]
+drawDf2<-drawDf[order(drawDf$upRatio,decreasing = T),][1:10,]
+library(ggplot2)
+# https://stackoverflow.com/questions/21537782/how-to-set-fixed-continuous-colour-values-in-ggplot2
+ggplot(drawDf2, aes(x=bp, y=all, colour=upRatio,size=upVsDown)) + 
+  geom_point()+coord_flip()
+```
+  
+  绘制barplot
+  
+```{r}
+library(ggplot2)
+# 绘制上调/下调比例前十
+drawGOstat<-function(tempDf,fileName,ylim){
+  drawDf<-data.frame()
+  for(i in unique(tempDf$go)){
+    all=sum(tempDf$go==i)
+    up=sum(tempDf$change=="up" & tempDf$go==i)
+    down=sum(tempDf$change=="down" & tempDf$go==i)
+    drawDf<-rbind(drawDf,data.frame(go=i,
+                                    all=all,
+                                    up=up,
+                                    down=down,
+                                    no=all-up-down))
+  }
+  drawDf<-cbind(drawDf,upRatio=drawDf$up/drawDf$all,downRatio=drawDf$down/drawDf$all)
+  # 注释到的蛋白种类>20
+  drawDf<-drawDf[drawDf$all>20 ,]
+  
+  
+  # 绘制上调比例前十
+  drawDf2<-drawDf[order(drawDf$upRatio,decreasing = T),][1:10,c(-2,-6,-7)]
+  drawDf2 <- tidyr::gather(drawDf2,key=Change,value=Count,-go)
+  ggplot(drawDf2,aes(x=go, y=Count, fill=Change)) + 
+    ylim(0, ylim)+
+    geom_bar(stat = "identity",position="dodge",width=0.8, col='black')+
+    # 添加数值
+    geom_text(aes(label=Count), position=position_dodge(width=0.8), hjust=-0.25)+
+    coord_flip() +
+    theme(axis.title.y=element_blank(),text = element_text(size = 15))+
+    # goterm每三个单词一行
+    scale_x_discrete(labels=function(x) stringr::str_wrap(x, width=20))+
+    ggsave(paste0(fileName,"GOstatUpTop10.png"),width = 10.24, height = 7.68,dpi=100)
+  
+  # 绘制下调比例前十
+  drawDf2<-drawDf[order(drawDf$downRatio,decreasing = T),][1:10,c(-2,-6,-7)]
+  drawDf2 <- tidyr::gather(drawDf2,key=Change,value=Count,-go)
+  ggplot(drawDf2,aes(x=go, y=Count, fill=Change)) + 
+    ylim(0, ylim)+
+    geom_bar(stat = "identity",position="dodge",width=0.8, col='black')+
+    # 添加数值
+    geom_text(aes(label=Count), position=position_dodge(width=0.8), hjust=-0.25)+
+    coord_flip() +
+    theme(axis.title.y=element_blank(),text = element_text(size = 15))+
+    # goterm每三个单词一行
+    scale_x_discrete(labels=function(x) stringr::str_wrap(x, width=20))+
+    ggsave(paste0(fileName,"GOstatDownTop10.png"),width = 10.24, height = 7.68,dpi=100)
+}
+
+# NCBI的统计
+
+tempDf<-merge(change,data.frame(id=goMapBp$Gene,go=goNameBp$TERM),by="id")
+drawGOstat(tempDf,"ncbiBp",200)
+tempDf<-merge(change,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+drawGOstat(tempDf,"ncbiMf",200)
+tempDf<-merge(change,data.frame(id=goMapCc$Gene,go=goNameCc$TERM),by="id")
+drawGOstat(tempDf,"ncbiCc",220)
+
+# meta的统计
+
+# 读取meta的注释
+readMetaGo<-function(){
+  goMapBp<<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapBp.rds")
+  goMapMf<<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapMf.rds")
+  goMapCc<<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapCc.rds")
+  goNameBp <<- AnnotationDbi::select(x=GO.db, keys = goMapBp$GO,  keytype = "GOID",columns = "TERM" )
+  goNameMf <<- AnnotationDbi::select(x=GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+  goNameCc <<- AnnotationDbi::select(x=GO.db, keys = goMapCc$GO,  keytype = "GOID",columns = "TERM" )
+}
+readMetaGo()
+
+change<-data.frame(id=df2$Accession,change=mapply(judgeSignificance,
+                                                 df2$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df2$`Abundance.Ratio:.(low)./.(high)`))
+tempDf<-merge(change,data.frame(id=goMapBp$Gene,go=goNameBp$TERM),by="id")
+drawGOstat(tempDf,"metaBp",800)
+tempDf<-merge(change,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+drawGOstat(tempDf,"metaMf",600)
+tempDf<-merge(change,data.frame(id=goMapCc$Gene,go=goNameCc$TERM),by="id")
+drawGOstat(tempDf,"metaCc",3000)
+```
+
+### 磷酸酶，磷脂酶序列建树
+  [你还在用MEGA6建树吗？全新的MEGAx来啦！](https://mp.weixin.qq.com/s/VCdzikn2UGVG06LNyqZ0Dg)
+  [使用ggtree实现进化树的可视化和注释](https://mp.weixin.qq.com/s/qtd9UEJuVL-WMZ3iIIL-Dg)
+  
+#### 磷酸酶
+  
+```{r}
+# 处理ncbi
+readNCBIgo()
+changeAndSeq<-data.frame(id=df$Accession,change=mapply(judgeSignificance,
+                                                 df$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf<-cbind(tempDf[tempDf$go=="phosphatase activity",-4],database="public")
+idNameGoEC<-read.table("panamaNCBIgoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf<-merge(treeDf,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+
+# 处理meta
+readMetaGo()
+changeAndSeq<-data.frame(id=df2$Accession,change=mapply(judgeSignificance,
+                                                 df2$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df2$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df2$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf2<-cbind(tempDf[tempDf$go=="phosphatase activity",-4],database="meta")
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果
+# cut -f 3,4,10,12 panamaMetablast2gotable.txt > panamaMetaGoEC.txt
+idNameGoEC<-read.table("../panamaMetablast2go分析结果/panamaMetaGoEC.txt",
+                       sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf2<-merge(treeDf2,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+treeDf3<-rbind(treeDf,treeDf2)
+saveRDS(treeDf3,"phosphataseActivity.rds")
+treeDf3<-readRDS("phosphataseActivity.rds")
+# 根据Description将磷酸酶分类
+treeDf3<-cbind(treeDf3,kind=as.character(treeDf3$Description),stringsAsFactors=F)
+treeDf3[treeDf3$Description!="acid phosphatase" & treeDf3$Description!="alkaline phosphatase",
+        "kind"]="other phosphatase"
+# 保存序列为fasta
+seq<-as.character(treeDf3$seq)
+names(seq)<-as.character(treeDf3$id)
+protein<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(protein, "phosphataseActivity.fasta")
+
+# 使用megax选择muscle进行序列对齐，构建neighbor-joining tree，bootstrap-method，重复1000次
+# 将original tree保存为nwk格式,同时保存bootstrap value
+
+library("ggtree")
+tree <- read.tree("phosphataseActivity.nwk")
+# 将bootstrap分数转化为整数
+tree$node.label<-round(as.numeric(tree$node.label)*100,digit = 0)
+p <- ggtree(tree,layout="circular") %<+% data.frame(Taxa=treeDf3$id,Change=treeDf3$change, # 添加自定义表格
+                       Database=treeDf3$database,
+                       Kind=treeDf3$kind)+ 
+       geom_tippoint(aes(shape=Database, color=Kind),size=5,alpha=1)+
+  geom_nodelab(size=3)+
+  theme(legend.position="right")+
+  geom_text(aes(label=Change), size=3)
+p+ggsave("磷酸酶系统发育树.png",width = 10.24, height = 7.68,dpi=100)
+```
+
+#### 磷酯酶
+
+```{r}
+# 处理ncbi
+readNCBIgo()
+changeAndSeq<-data.frame(id=df$Accession,change=mapply(judgeSignificance,
+                                                 df$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf<-cbind(tempDf[tempDf$go=="phospholipase activity",-4],database="public")
+idNameGoEC<-read.table("panamaNCBIgoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf<-merge(treeDf,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+
+# 处理meta
+readMetaGo()
+changeAndSeq<-data.frame(id=df2$Accession,change=mapply(judgeSignificance,
+                                                 df2$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df2$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df2$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf2<-cbind(tempDf[tempDf$go=="phospholipase activity",-4],database="meta")
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果
+# cut -f 3,4,10,12 panamaMetablast2gotable.txt > panamaMetaGoEC.txt
+idNameGoEC<-read.table("../panamaMetablast2go分析结果/panamaMetaGoEC.txt",
+                       sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf2<-merge(treeDf2,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+treeDf3<-rbind(treeDf,treeDf2)
+saveRDS(treeDf3,"phospholipaseActivity.rds")
+treeDf3<-readRDS("phospholipaseActivity.rds")
+# 不删除这两个序列mega建树的时候会报错
+treeDf3<-treeDf3[c(-22,-31),]
+
+# 保存序列为fasta
+seq<-as.character(treeDf3$seq)
+names(seq)<-as.character(treeDf3$id)
+protein<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(protein, "phospholipaseActivity.fasta")
+
+# 使用megax选择muscle进行序列对齐，构建neighbor-joining tree，bootstrap-method，重复1000次
+# 将original tree保存为nwk格式,同时保存bootstrap value
+
+library("ggtree")
+tree <- read.tree("phospholipaseActivity.nwk")
+# 将bootstrap分数转化为整数
+tree$node.label<-round(as.numeric(tree$node.label)*100,digit = 0)
+p <- ggtree(tree,layout="circular") %<+% data.frame(Taxa=treeDf3$id,Change=treeDf3$change, # 添加自定义表格
+                       Database=treeDf3$database,
+                       Description=treeDf3$Description)+ 
+       geom_tippoint(aes(shape=Database, color=Change),size=5,alpha=1)+
+  geom_nodelab(size=3)+
+  theme(legend.position="right")
+p+ggsave("磷酸酯酶系统发育树.png",width = 10.24, height = 7.68,dpi=100)
+```
+
+### 寻找motif
+  
+  [meme本地版的使用](https://hui-liu.github.io/blog/meme%E6%9C%AC%E5%9C%B0%E7%89%88%E7%9A%84%E4%BD%BF%E7%94%A8/)  
+  
+  [使用tbtools绘制motif和进化树](http://www.omicsclass.com/article/382)  
+  
+  [tbtools项目地址](https://github.com/CJ-Chen/TBtools)
+  
+```{r}
+# conda install meme
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果
+# mkdir phosphataseMotif
+# -mod zoops 指每条序列包含0个或多个不重复的motif
+# meme phosphataseActivity.fasta -protein -oc phosphataseMotif/ -mod zoops -nmotifs 15 -minw 30 -maxw 200 -p 4
+treeDf3<-readRDS("phosphataseActivity.rds")
+treeDf3<-cbind(treeDf3,kind=as.character(treeDf3$Description),stringsAsFactors=F)
+treeDf3[treeDf3$Description!="acid phosphatase" & treeDf3$Description!="alkaline phosphatase",
+        "kind"]="other phosphatase"
+write.table(data.frame(seq=treeDf3$id,description=paste0(treeDf3$database,"--",treeDf3$kind)),
+            "./phosphataseMotif/id2kind",col.names=F,row.names = F,quote=F)
+
+# mkdir phospholipaseMotif
+# meme phospholipaseActivity.fasta -protein -oc phospholipaseMotif/ -mod zoops -nmotifs 15 -minw 30 -maxw 100 -p 4
+treeDf3<-readRDS("phospholipaseActivity.rds")
+treeDf3<-treeDf3[c(-22,-31),]
+write.table(data.frame(seq=treeDf3$id,description=paste0(treeDf3$database,"--",treeDf3$Description)),
+            "./phospholipaseMotif/id2kind",col.names=F,row.names = F,quote=F)
+# 使用tbtools绘制motif和进化树
+```
+
+  [解析meme的xml文件](https://www.cnblogs.com/shangfr/p/5564167.html)  
+  [NCBI Conserved Domain 搜索](https://www.ncbi.nlm.nih.gov/Structure/bwrpsb/bwrpsb.cgi?)
+
+#### 对motif进行注释
+  
+```{r}
+library(XML)
+
+# 处理磷酸酶
+phosphataseXml<-xmlParse("./phosphataseMotif/meme.xml",encoding="UTF-8")
+xmltop <- xmlRoot(phosphataseXml)
+# 提取motif名称和序列
+motifMatrix<-xmlSApply(xmltop[[3]], xmlAttrs)
+seq<-as.character(motifMatrix[2,])
+names(seq)<-as.character(motifMatrix[1,])
+motif<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(motif, "./phosphataseMotif/phosphataseMotif.fasta")
+# 获得的fasta文件在NCBI的web cd-search tool进行注释
+
+# 处理磷脂酶
+phospholipaseXml<-xmlParse("./phospholipaseMotif/meme.xml",encoding="UTF-8")
+xmltop <- xmlRoot(phospholipaseXml)
+# 提取motif名称和序列
+motifMatrix<-xmlSApply(xmltop[[3]], xmlAttrs)
+seq<-as.character(motifMatrix[2,])
+names(seq)<-as.character(motifMatrix[1,])
+motif<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(motif, "./phospholipaseMotif/phospholipaseMotif.fasta")
+```
+  

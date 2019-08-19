@@ -1,0 +1,195 @@
+---
+title: "通过rentrez批量获取NCBI数据"
+author: "XYZ"
+date: "2018/10/30"
+output: html_document
+---
+
+[rentrez教程](https://ropensci.org/tutorials/rentrez_tutorial/)
+[stringr教程](http://blog.fens.me/r-stringr/)
+  
+**建立搜索**  
+[NCBI MeSH 术语数据库](https://www.ncbi.nlm.nih.gov/mesh/)
+[kable教程](https://haozhu233.github.io/kableExtra/awesome_table_in_html.html)  
+```{r results = "asis"}
+library(rentrez)
+r_search <- entrez_search(db   = "pubmed",
+                          # 搜索2017-2018年发表的带有soil和proteomics的文章
+                          term = "soil[MeSH] AND proteomics [MeSH] AND 2017:2018[PDAT]")
+# 整理搜索结果
+multi_summs <- entrez_summary(db="pubmed", id=r_search$ids)
+# 输出文章全名
+#extract_from_esummary(multi_summs, "fulljournalname")
+# 输出文章发表日期，题目和引用情况
+date_and_cite <- extract_from_esummary(multi_summs, c("pubdate", "pmcrefcount",  "title"))
+papers<-as.data.frame(t(date_and_cite))
+library(knitr)
+library(kableExtra)
+kable(papers, row.names=FALSE,caption = "土壤蛋白组相关文献") %>%
+  kable_styling(bootstrap_options = "striped", full_width = T, position = "left") %>%
+  column_spec(1, width = "10em",bold = T, border_right = T) %>%
+  column_spec(2, width = "5em",border_right = T)
+```
+  
+**提取相关序列**  
+[r的异常处理](https://www.cnblogs.com/weibaar/p/4382397.html)
+  
+```{r eval=FALSE}
+# 建立搜索
+soil <- entrez_search(db="protein", 
+                      term="soil[All Fields] OR rhizosphere[All Fields] AND (fungi[filter] OR protists[filter] OR bacteria[filter] OR archaea[filter] OR viruses[filter])", 
+                      use_history=TRUE)
+# 必须用异常处理，网络不稳定
+# retstart为每次下载的序列的起始index，retmax为每次下载的序列条数
+for( seq_start in seq(1,soil$count,1000)){
+  fastaGot<-F
+  while (!fastaGot) {
+    tryCatch(
+      {
+        fasta <- entrez_fetch(db="protein", web_history=soil$web_history,
+                            rettype="fasta", retmax=1000, retstart=seq_start)
+        fastaGot<-T
+      },
+      error =function(e) cat("网络抖动",conditionMessage(e),"\n\n"),
+      finally = {cat(seq_start+999, "sequences downloaded\r")}
+    )
+  }
+  cat(fasta, file="NCBIsoil.fasta", append=TRUE)
+}
+```
+
+**获取一个基因在不同数据库里面的引用情况**  
+```{r eval=FALSE}
+# 找到id为351的基因并查看它在所有数据库中的引用情况
+links <- entrez_link(dbfrom='gene', id=351, db='all')
+# 在pmc中提及这个基因的文章的id
+links$links$gene_pmc[1:10]
+# 限定引用的数据库为nuccore转录组数据库
+links <- entrez_link(dbfrom='gene', id=351, db='nuccore')
+# 查看refseqrna的id
+links$links$gene_nuccore_refseqrna
+# 多个id
+links <- entrez_link(dbfrom="gene",id=c("93100", "223646"),db="protein",by_id = TRUE)
+# 按照输入的id links被分成了两个list
+links[[1]]$links$gene_protein
+```
+
+**首先获取ID再通过ID下载序列**
+[R保存对象](https://stackoverflow.com/questions/19967478/how-to-save-data-file-into-rdata)
+```{r eval=FALSE}
+# 建立搜索
+soil <- entrez_search(db="protein", 
+                      term="soil[All Fields] OR rhizosphere[All Fields] AND (fungi[filter] OR protists[filter] OR bacteria[filter] OR archaea[filter] OR viruses[filter])",retmax = 0)
+
+# 获取id
+count<- soil$count
+ids<-c()
+for( id_start in seq(1,count,10000)){
+  idGot<-F
+  while (!idGot) {
+    tryCatch(
+      {
+        soil <- entrez_search(db="protein", 
+                      term="soil[All Fields] OR rhizosphere[All Fields] AND (fungi[filter] OR protists[filter] OR bacteria[filter] OR archaea[filter] OR viruses[filter])",
+                      retmax = 10000,retstart=id_start)
+        idGot<-T
+      },
+      error =function(e) cat("网络抖动",conditionMessage(e),"\n\n"),
+      finally = {cat(id_start+9999, "ids downloaded\r")}
+    )
+  }
+  ids<-c(ids,soil$ids)
+}
+# 保存ids
+saveRDS(ids, file="ids2.rds")
+
+# 读取id
+ids<-readRDS("ids2.rds")
+
+# 随机下载一万个序列
+ids2<-sample(ids,10000)
+for( seq_start in seq(1,10000,200)){
+  fastaGot<-F
+  while (!fastaGot) {
+    tryCatch(
+      {
+        fasta <- entrez_fetch(db="protein", id=ids2[seq_start:(seq_start+199)],
+                            rettype="fasta")
+        fastaGot<-T
+      },
+      error =function(e) cat("网络抖动",conditionMessage(e),"\n\n"),
+      finally = {cat(seq_start+199, "sequences downloaded\r")}
+    )
+  }
+  cat(fasta, file="NCBIsoil.fasta", append=TRUE)
+}
+```
+
+**多线程下载**
+```{r}
+
+count<-soil$count
+chunk<-count%/%6
+start<-seq(1,count,chunk)[-7]
+download<-function(x){
+  soil <- entrez_search(db="protein", 
+                    term="soil[All Fields] OR rhizosphere[All Fields] AND (fungi[filter] OR protists[filter] OR bacteria[filter] OR archaea[filter] OR viruses[filter])", 
+                    use_history=TRUE)
+  for( seq_start in seq(x,x+chunk,1000)){
+    fastaGot<-F
+    while (!fastaGot) {
+      tryCatch(
+        {
+          fasta <- entrez_fetch(db="protein", web_history=soil$web_history,
+                              rettype="fasta", retmax=1000, retstart=seq_start)
+          fastaGot<-T
+        },
+        error =function(e) cat("Thread",x,"网络抖动",conditionMessage(e),"\n\n"),
+        finally = {cat("Thread",x,seq_start+999, "sequence downloaded\r")}
+      )
+    }
+    cat(fasta, file=paste("NCBIsoil",x,".fasta",sep=""), append=TRUE)
+  }
+}
+
+library(parallel)
+cl <- makeCluster(6,outfile="") # 初始化6个线程
+clusterEvalQ(cl, library(rentrez))
+clusterExport(cl, "chunk")
+parLapply(cl,start,download) 
+
+# 设置线程超时时间
+
+# 补充下载第一次下载失败的序列
+chunk<-1968050
+start<-c(1,1968051,11808298,13776348,15744397,17712447)
+
+download<-function(x){
+  soil <- entrez_search(db="protein", 
+                    term="soil[All Fields] OR rhizosphere[All Fields] AND (fungi[filter] OR protists[filter] OR bacteria[filter] OR archaea[filter] OR viruses[filter])", 
+                    use_history=TRUE)
+  for( seq_start in seq(x,x+chunk,1000)){
+    fastaGot<-F
+    while (!fastaGot) {
+      tryCatch(
+        {
+          fasta <- entrez_fetch(db="protein", web_history=soil$web_history,
+                              rettype="fasta", retmax=1000, retstart=seq_start)
+          fastaGot<-T
+        },
+        error =function(e) cat("Thread",x,"网络抖动",conditionMessage(e),"\n\n"),
+        finally = {cat("Thread",x,seq_start+999, "sequence downloaded\r")}
+      )
+    }
+    cat(fasta, file=paste("./new/NCBIsoil",x,".fasta",sep=""), append=TRUE)
+  }
+}
+
+library(parallel)
+cl <- makeCluster(6,outfile="",timeout=6*3600) # 初始化6个线程
+clusterEvalQ(cl, library(rentrez))
+clusterExport(cl, "chunk")
+parLapply(cl,start,download) 
+
+```
+

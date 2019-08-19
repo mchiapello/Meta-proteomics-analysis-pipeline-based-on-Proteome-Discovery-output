@@ -1,0 +1,149 @@
+---
+title: "panamaNCBI富集分析"
+author: "XYZ"
+date: "2019/1/18"
+output: html_document
+---
+
+### 从blast2go注释结果提取注释并进行富集分析
+
+#### 处理NCBI数据库的结果
+
+```{r}
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果
+# cut -f 3,10 panamaNCBItable.txt > panamaNCBIgoTerm.txt
+NCBIgo<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/panamaNCBIgoTerm.txt",
+                   sep="\t",header=T,stringsAsFactors=F)
+# 剔除未注释的蛋白
+NCBIgo<-NCBIgo[NCBIgo$GO.IDs!="",]
+# 将行里面的单个注释拆分为多个
+NCBIgo<-tidyr::separate_rows(NCBIgo,GO.IDs,sep="; ")
+# 区分MF，BP，CC
+library(stringr)
+NCBIgo<-cbind(NCBIgo,Ont=str_sub(NCBIgo$GO.IDs,1L,1L))
+NCBIgo$GO.IDs<-str_sub(NCBIgo$GO.IDs,3L)
+library(clusterProfiler)
+# goMapBp <- buildGOmap(NCBIgo[NCBIgo$Ont == "P",2:1])
+# goMapMf <- buildGOmap(NCBIgo[NCBIgo$Ont == "F",2:1])
+# goMapCc <- buildGOmap(NCBIgo[NCBIgo$Ont == "C",2:1])
+# saveRDS(goMapBp,"/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapBp.rds")
+# saveRDS(goMapMf,"/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapMf.rds")
+# saveRDS(goMapCc,"/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapCc.rds")
+goMapBp<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapBp.rds")
+goMapMf<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapMf.rds")
+goMapCc<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIblast2go分析结果/goMapCc.rds")
+library(GO.db)
+# columns(GO.db) 可以查看可以提取的term
+goNameBP <- AnnotationDbi::select(x=GO.db, keys = goMapBp$GO,  keytype = "GOID",columns = "TERM" )
+goNameMf <- AnnotationDbi::select(x=GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+goNameCc <- AnnotationDbi::select(x=GO.db, keys = goMapCc$GO,  keytype = "GOID",columns = "TERM" )
+df1<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIdifferentPorteinMore.txt")
+df2<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIdifferentPorteinLess.txt")
+df3<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaNCBIdifferentPortein.txt")
+# 将上调下调的生物学过程绘制在一个图上
+library(ggplot2)
+goBP <- merge_result(list(up= enricher(df1$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP),
+                          down=enricher(df2$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP)))
+dotplot(goBP,font.size=10)+ggsave("upAndDownBp.png",width = 10.24, height = 7.68,dpi=100)
+# 单独绘制上调的蛋白，因为只有上调的能富集出来
+goBp <- enricher(df1$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP)
+goMf <- enricher(df1$V1,TERM2GENE = goMapMf, TERM2NAME=goNameMf)
+goCc <- enricher(df1$V1,TERM2GENE = goMapCc, TERM2NAME=goNameCc)
+drawEnrichPlot<-function(go,fileName){
+  # 绘制富集的通路
+  dotplot(go,font.size=10)+
+    ggsave(paste0(fileName,"Dot.png"),width = 10.24, height = 7.68,dpi=100)
+  # 绘制富集通路和差异基因之间的关系
+  cnetplot(go)+
+    ggsave(paste0(fileName,"Cnet.png"),width = 10.24, height = 7.68,dpi=100)
+  # 绘制富集通路之间的关系
+  emapplot(go)+
+    ggsave(paste0(fileName,"Emap.png"),width = 10.24, height = 7.68,dpi=100)
+}
+drawEnrichPlot(goMf,"upMf")
+drawEnrichPlot(goBp,"upBp")
+drawEnrichPlot(goCc,"upCc")
+```
+
+#### 处理meta数据库的结果
+```{r}
+# cd /media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果
+# cut -f 3,10 panamaMetablast2gotable.txt > panamaMetaGoTerm.txt
+metaGo<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/panamaMetaGoTerm.txt",
+                   sep="\t",header=T,stringsAsFactors=F)
+# 剔除未注释的蛋白
+metaGo<-metaGo[metaGo$GO.IDs!="",]
+# 将行里面的单个注释拆分为多个
+metaGo<-tidyr::separate_rows(metaGo,GO.IDs,sep="; ")
+# 区分MF，BP，CC
+library(stringr)
+metaGo<-cbind(metaGo,Ont=str_sub(metaGo$GO.IDs,1L,1L))
+metaGo$GO.IDs<-str_sub(metaGo$GO.IDs,3L)
+library(clusterProfiler)
+# goMapBp <- buildGOmap(metaGo[metaGo$Ont == "P",2:1])
+# goMapMf <- buildGOmap(metaGo[metaGo$Ont == "F",2:1])
+# goMapCc <- buildGOmap(metaGo[metaGo$Ont == "C",2:1])
+# saveRDS(goMapBp,"/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapBp.rds")
+# saveRDS(goMapMf,"/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapMf.rds")
+# saveRDS(goMapCc,"/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapCc.rds")
+goMapBp<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapBp.rds")
+goMapMf<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapMf.rds")
+goMapCc<-readRDS("/media/sf_wheat-soil/soilprotein/panama/panamaMetablast2go分析结果/goMapCc.rds")
+library(GO.db)
+goNameBP <- AnnotationDbi::select(x=GO.db, keys = goMapBp$GO,  keytype = "GOID",columns = "TERM" )
+goNameMf <- AnnotationDbi::select(x=GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+goNameCc <- AnnotationDbi::select(x=GO.db, keys = goMapCc$GO,  keytype = "GOID",columns = "TERM" )
+df1<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaMetaDifferentPorteinMore.txt")
+df2<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaMetaDifferentPorteinLess.txt")
+df3<-read.table("/media/sf_wheat-soil/soilprotein/panama/panamaMetaDifferentPortein.txt")
+# 将上调下调的生物学过程绘制在一个图上
+# 下调的蛋白并没有富集出来
+library(ggplot2)
+goBP <- merge_result(list(up= enricher(df1$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP),
+                          down=enricher(df2$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP)))
+dotplot(goBP,font.size=10)+ggsave("upAndDownBp.png",width = 10.24, height = 7.68,dpi=100)
+# 单独绘制上调的蛋白，因为同样只有上调的能富集出来
+goBp <- enricher(df1$V1,TERM2GENE = goMapBp, TERM2NAME=goNameBP)
+goMf <- enricher(df1$V1,TERM2GENE = goMapMf, TERM2NAME=goNameMf)
+goCc <- enricher(df1$V1,TERM2GENE = goMapCc, TERM2NAME=goNameCc,pvalueCutoff = 0.5)
+drawEnrichPlot<-function(go,fileName){
+  # 绘制富集的通路
+  dotplot(go,font.size=10)+
+    ggsave(paste0(fileName,"Dot.png"),width = 10.24, height = 7.68,dpi=100)
+  # 绘制富集通路和差异基因之间的关系
+  cnetplot(go)+
+    ggsave(paste0(fileName,"Cnet.png"),width = 10.24, height = 7.68,dpi=100)
+  # 绘制富集通路之间的关系
+  emapplot(go)+
+    ggsave(paste0(fileName,"Emap.png"),width = 10.24, height = 7.68,dpi=100)
+}
+drawEnrichPlot(goMf,"upMf")
+drawEnrichPlot(goBp,"upBp")
+drawEnrichPlot(goCc,"upCc")
+```
+
+### 寻找铁离子运输相关的蛋白
+```{r}
+# 查看所有MF注释里面有关于铁的注释，关键字 ferric iron ferrous
+ironMf<-goNameMf[str_detect(goNameMf$TERM, "ferrous") | 
+           str_detect(goNameMf$TERM, "iron") |
+           str_detect(goNameMf$TERM, "ferric"),]
+# ferric iron binding
+# ferrous iron binding
+# iron ion binding
+table(ironMf$TERM)
+# 查看所有蛋白注释中有关于铁离子运输的注释
+goMf <- cbind(goMapMf,TERM=goNameMf$TERM)
+suppressMessages(library(dplyr))
+ironMf<-filter(goMf,TERM=="iron ion binding"|TERM=="ferrous iron binding"|TERM=="ferric iron binding")
+# 一共有16种与铁离子运输相关的蛋白
+length(unique(ironMf$Gene))
+# 有5种与铁离子运输相关的蛋白丰度发生了变化，其中下调的有4种
+# goMf2<-merge(df3,goMapMf,by.x="V1",by.y="Gene",all.x=T)
+goMf2<-merge(df2,goMapMf,by.x="V1",by.y="Gene",all.x=T)
+goMf2<-goMf2[!is.na(goMf2$GO),]
+goMf2<-cbind(goMf2,TERM=AnnotationDbi::select(x=GO.db, keys = goMf2$GO,  keytype = "GOID",columns = "TERM" )$TERM)
+ironMf2<-filter(goMf2,TERM=="iron ion binding"|TERM=="ferrous iron binding"|TERM=="ferric iron binding")
+length(unique(ironMf2$V1))
+```
+

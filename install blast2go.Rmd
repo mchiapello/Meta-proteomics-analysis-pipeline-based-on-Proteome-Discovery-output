@@ -1,0 +1,64 @@
+---
+title: "安装blast2go"
+author: "xyz"
+date: "2019/1/2"
+output: html_document
+---
+  
+  [blast2go安装](https://mp.weixin.qq.com/s?__biz=MzI1MjU5MjMzNA==&mid=2247486358&idx=1&sn=4b095e9a200a419079d947d930c38abd&chksm=e9e02237de97ab21f4227ee76eca0aa94433fe6cc374e030093eb3acc2094a546110763bb411&mpshare=1&scene=23&srcid=0101kMbzD2el0RPASBiC9pFi#rd&tdsourcetag=s_pctim_aiomsg)
+  [基于taxid构建Blast database](http://blog.sina.com.cn/s/blog_16152d7d70102xnc3.html)
+  
+### 安装和使用blast
+  
+```{bash eval=F}
+cd /media/sf_bigData
+# 下载nr库
+cat nr.list | xargs -n 1 -P 4 bash -c 'wget ftp://ftp.ncbi.nih.gov/blast/db/$0'  &> downloadlog &
+mkdir blastDatabase
+ls nr.*.tar.gz | xargs -n 1 bash -c 'tar xzvf $0 -C ./blastDatabase'
+blastp -query test.fasta -db nr -outfmt 5 -evalue 1e-6 -num_threads 6  -out "my.xml"
+# 安装blast
+tar xzvf ncbi-blast-2.8.1+-x64-linux.tar.gz
+echo 'export PATH=/media/sf_bigData/ncbi-blast-2.8.1+/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+# 查看数据库信息
+blastdbcmd -db nr -dbtype prot -info
+# 导出fasta文件
+blastdbcmd -db nr -dbtype prot -entry all -outfmt "%f" -out nr.fasta &> nrTransform.log &
+# 提交blast查询
+# 
+blastp -query test.fa -db nr -outfmt 5 -evalue 1e-6 -num_threads 32 -out "test.xml"
+# 查看blast结果最后几条的Query序号
+tail meta.xml -n 50000 | grep "Query"
+# 查看blast结果最后几条的序列名称
+tail meta.xml -n 20000 | grep "Iteration_query-def"
+# blast的xml结果文件中的query顺序和提交的fasta的顺序是对应的
+seqkit range -r 6127:6136  panamaMeta.fasta | seqkit seq -n
+# 提取panamaNCBI.fasta中第一次没有比对完的序列
+seqkit range -r 3160:4344  panamaNCBI.fasta >panamaNCBI3160.fasta
+# 提取panamaMeta.fasta中第一次没有比对完的序列
+seqkit range -r 6137:19298  panamaMeta.fasta >panamaMeta6137.fasta
+```
+  
+### 安装和使用blast2go
+  
+  blast2go命令行版本只剩商业版
+  
+  [blast2go官方教程](http://docs.blast2go.com/user-manual/)
+  
+  blast桌面版file->export->export table导出当前正在显示的table，export->export mapping results可以导出每条query的hit的物种信息、id和go号。
+  
+```{bash eval=F}
+
+```
+
+### 其他蛋白序列比对和注释工具  
+  
+  [InterPro](https://www.ebi.ac.uk/interpro/)
+  
+  [eggnog mapper](http://eggnogdb.embl.de)
+
+  [MMseqs2](https://github.com/soedinglab/MMseqs2)
+  
+  [diamond](https://github.com/bbuchfink/diamond)
+  

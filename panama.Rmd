@@ -1,0 +1,176 @@
+---
+title: "panama"
+author: "XYZ"
+date: "2018/12/24"
+output: html_document
+---
+
+**参考链接**  
+  
+[使用ggplot绘制韦恩图](https://guangchuangyu.github.io/cn/2018/04/ggvenn/)  
+[UpSetR教程](https://www.jianshu.com/p/324aae3d5ea4)    
+[ggord包给降维分析画置信区间](https://github.com/fawda123/ggord)  
+[给降维分析画圈圈](https://guangchuangyu.github.io/cn/2018/01/geom-ord-ellipse/)  
+[利用行均值填补缺失值](https://stackoverflow.com/questions/6918086/replace-na-values-by-row-means)  
+  
+## 1.数据读取和筛选
+
+```{r}
+setwd("/media/sf_wheat-soil/soilprotein/panama/")
+library(openxlsx)
+df<-read.xlsx("/media/sf_wheat-soil/soilprotein/panama/PanamaNCBI/PanamaNCBI2ProteinsFix.xlsx")
+# df2<-read.xlsx("/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx")
+# saveRDS(df2, file="/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx.rds")
+df2<-readRDS("/media/sf_wheat-soil/soilprotein/panama/PanamaMeta2/panamameMeta2ProteinsFix.xlsx.rds")
+suppressMessages(library(dplyr))
+df<-filter(df,Contaminant==F,`Exp..q-value:.Combined`<=0.01)
+df2<-filter(df2,Contaminant==F,`Exp..q-value:.Combined`<=0.01)
+# 使用NCBI土壤微生物蛋白数据库检测到20779种蛋白，分布在4344个group
+paste0("使用NCBI土壤微生物蛋白数据库检测到",nrow(df),"种蛋白，","分布在",sum(df$Master=="Master Protein"),"个group")
+# "使用宏基因组蛋白数据库检测到170565种蛋白，分布在19298个group"
+paste0("使用宏基因组蛋白数据库检测到",nrow(df2),"种蛋白，","分布在",sum(df2$Master=="Master Protein"),"个group")
+df<-filter(df,Master=="Master Protein")
+df2<-filter(df2,Master=="Master Protein")
+# 绘图
+tempDf<-read.table(text = "
+Database,p,Count
+public,groups,4344
+public,proteins,20779
+meta,groups,19298
+meta,proteins,170565",
+header = T,sep = ",",stringsAsFactors=F)
+ggplot(tempDf,aes(x=p, y=Count, fill=Database)) + 
+  geom_bar(stat = "identity",position="dodge",width=0.8, col='black')+
+  # 添加数值
+  geom_text(aes(label=Count), position=position_dodge(width=0.8), vjust=-0.25)+
+  theme(axis.title.x=element_blank(),text = element_text(size = 15))
+```
+
+## 2.使用两种库检测的蛋白种类差异  
+  
+### 2.1绘制低磷和高磷之间的差异  
+```{r}
+# 调用绘图函数
+source("plotFunction.R")
+# 准备NCBI结果的绘图的矩阵
+tempDf<-df[,c("Found.in.Sample.Group:.high","Found.in.Sample.Group:.low")]!="Not Found"
+colnames(tempDf)<-c("high","low")
+plotVenn(tempDf,"NCBIhighPvsLowP.png")
+#  high low Counts
+#1    0   0     24
+#2    0   1    450
+#3    1   0    559
+#4    1   1   3311
+# 准备宏基因组结果的绘图的矩阵
+tempDf<-df2[,c("Found.in.Sample.Group:.high","Found.in.Sample.Group:.low")]!="Not Found"
+colnames(tempDf)<-c("high","low")
+plotVenn(tempDf,"metaHighPvsLowP.png")
+#   high low Counts
+# 1    0   0    351
+# 2    0   1   2069
+# 3    1   0   2675
+# 4    1   1  14203
+
+```
+
+### 2.2绘制重复之间的差异
+
+```{r}
+# 准备绘制NCBI高磷4个重复结果的绘图的矩阵
+tempDf<-df[,c("Found.in.File:.[F1]","Found.in.File:.[F2]","Found.in.File:.[F3]","Found.in.File:.[F4]")]!="Not Found"
+colnames(tempDf)<-paste0("Repeat",1:4)
+plotVenn(tempDf,"NCBIrepeat.png")
+# 绘制upset图
+plotUpset(tempDf,"NCBIrepeatUpset.png",3,90)
+# 准备绘制宏基因组高磷4个重复结果的绘图的矩阵
+tempDf<-df2[,c("Found.in.File:.[F1]","Found.in.File:.[F2]","Found.in.File:.[F5]","Found.in.File:.[F6]")]!="Not Found"
+colnames(tempDf)<-paste0("Repeat",1:4)
+plotVenn(tempDf,"metaRepeat.png")
+# 绘制upset图
+plotUpset(tempDf,"metaRepeatUpset.png",3,90)
+```
+
+### 2.3比较converage
+```{r}
+library(ggplot2)
+tempDf<-data.frame(Coverage=c(df$`Coverage.[%]`,df2$`Coverage.[%]`),
+                   Database=rep(c("public","meta"),times=c(nrow(df),nrow(df2))))
+qplot(Coverage, data = tempDf,geom = "freqpoly", ylab = "Count",binwidth =1,color =Database)+
+  theme(text = element_text(size = 15))
+```
+
+
+## 3.检测到的微生物种类的差异
+```{r}
+# 提取蛋白序列并保存为fasta
+library(Biostrings)
+seq<-df$Sequence
+names(seq)<-df$Accession
+protein<- AAStringSet(seq)
+writeXStringSet(protein, "panamaNCBI.fasta")
+seq<-df2$Sequence
+names(seq)<-df2$Accession
+protein<- AAStringSet(seq)
+# NCBI 一次最多提交一万条blast
+writeXStringSet(protein[1:(length(protein)/2)], "panamaMeta1.fasta")
+writeXStringSet(protein[(length(protein)/2+1):length(protein)], "panamaMeta2.fasta")
+```
+  
+  两个fasta的blast比对
+  [参考链接](https://www.researchgate.net/post/How_to_blast_two_fasta_files_against_each_other)
+  
+```{bash eval=F}
+cd /media/sf_wheat-soil/soilprotein/panama
+nohup blastp -query panamaMeta.fasta -subject panamaNCBI.fasta -outfmt 5 -evalue 1e-6 -out "meta2NCBI.xml" &
+```
+
+## 4.富集通路的差异
+
+```{r}
+# 提取差异蛋白
+# judge为more输出变多的，less..默认为所有差异蛋白
+extractDP<-function(tempDF,judgeMode,judge="both") {
+  FDRName<-paste0("Abundance.Ratio.Adj..P-Value:.",judgeMode)
+  FCName<-paste0("Abundance.Ratio:.",judgeMode)
+  df<-filter(tempDF,!is.na(tempDF[,FDRName]),!is.na(tempDF[,FCName]))[,c("Accession",FDRName,FCName)]
+  colnames(df)[2:3]<-c("FDR","FD")
+  # 判断显著性的标准为差异大于1.2倍,p值<=0.05
+  if(judge=="more"){df<-filter(df,FD>=1.2,FDR<=0.05)}
+  if(judge=="less"){df<-filter(df,FD<=1.2,FDR<=0.05)}
+  else{df<-filter(df,FD>=1.2 | FD<=1/1.2, FDR<=0.05)}
+  return(df)
+}
+df3<-extractDP(df,"(low)./.(high)")
+write.table(df3$Accession,"panamaNCBIdifferentPortein.txt",quote = F,row.names = F,col.names = F)
+df3<-extractDP(df,"(low)./.(high)","more")
+write.table(df3$Accession,"panamaNCBIdifferentPorteinMore.txt",quote = F,row.names = F,col.names = F)
+df3<-extractDP(df,"(low)./.(high)","less")
+write.table(df3$Accession,"panamaNCBIdifferentPorteinLess.txt",quote = F,row.names = F,col.names = F)
+
+df3<-extractDP(df2,"(low)./.(high)")
+write.table(df3$Accession,"panamaMetaDifferentPortein.txt",quote = F,row.names = F,col.names = F)
+df3<-extractDP(df2,"(low)./.(high)","more")
+write.table(df3$Accession,"panamaMetaDifferentPorteinMore.txt",quote = F,row.names = F,col.names = F)
+df3<-extractDP(df2,"(low)./.(high)","less")
+write.table(df3$Accession,"panamaMetaDifferentPorteinLess.txt",quote = F,row.names = F,col.names = F)
+```
+
+
+## 5.检测到的差异蛋白的差异
+
+```{r}
+# 绘制NCBI的火山图
+drawVolcanoPlot(df,"(low)./.(high)","NCBIvolcanoPlot.png")
+# 绘制宏基因组的火山图
+drawVolcanoPlot(df2,"(low)./.(high)","metaVolcanoPlot.png")
+```
+
+```{r}
+# PCA
+drawPCA(df[,32:39],rep(c("high","low"),each=4),"NCBIpCA.png")
+drawPCA(df2[,37:44],rep(c("high","low"),each=4),"metaPCA.png")
+# NMDS
+drawNMDS(df[,32:39],rep(c("high","low"),each=4),"NCBInMDS.png")
+drawNMDS(df2[,37:44],rep(c("high","low"),each=4),"metaNMDS.png")
+```
+

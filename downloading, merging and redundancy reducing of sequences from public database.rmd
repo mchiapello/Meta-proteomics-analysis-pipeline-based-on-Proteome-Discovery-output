@@ -1,0 +1,58 @@
+---
+title: "从公共数据库下载的序列的合并及去冗余"
+output: html_document
+---
+  
+[seqkit教程](https://bioinf.shenwei.me/seqkit/usage/)  
+安装seqkit
+```{bash eval=FALSE}
+conda install seqkit
+cd /media/sf_wheat-soil/database/uniprotKB
+```
+  
+合并文件
+```{bash eval=FALSE}
+cat uniprotRhizosphereNOTthalianaNOTrice.fasta uniprotSoilNOThumanNOTthalianaNOTrice.fasta >combine.fasta
+```
+  
+去除冗余序列,会保留遇到的第一条不重复的序列在combine_rmdup.fasta中
+```{bash eval=FALSE}
+seqkit rmdup combine.fasta -s -i -D combine_duplicated_sequences_statistics -d combine_duplicated_sequences -o combine_rmdup.fasta
+```
+
+重命名同名序列
+```{bash eval=FALSE}
+seqkit rename combine_rmdup.fasta -o combine_rmdup_renamed.fasta
+```
+  
+正则匹配特定id的序列
+```{bash eval=FALSE}
+seqkit grep combine.fasta -r -p .*A0A2V8HRF9.* -j4
+```
+
+过滤长度小于8，大于2700的序列
+```{bash eval=FALSE}
+seqkit seq NCBIsoil_rmdup.fasta -m 10 -M 2700 > NCBIsoil_rmdup_min10_max2700.fasta
+```
+
+保存序列统计信息
+```{bash eval=FALSE}
+seqkit stats NCBIsoil_rmdup_min10_max2700.fasta | csvtk csv2md -t >NCBIsoil_rmdup_min10_max2700.txt
+```
+
+删除gi号
+```
+seqkit replace NCBIsoil_rmdup_min10_max2700.fasta -p "gi.[0-9]+." > NCBIsoil_rmdup_min10_max2700_nogi.fasta
+```
+
+选取指定行读取
+```
+seqkit range NCBIsoil_rmdup_min10_max2700_nogi.fasta -r 19527:19537
+```
+
+序列聚类
+[cd-hit](https://github.com/weizhongli/cdhit/wiki)
+[教程](https://www.jianshu.com/p/57af07b9e986)
+```
+cd-hit -i NCBIsoil_rmdup_min10_max2700_nogi.fasta -o NCBIsoil_rmdup_min10_max2700_nogi_90.fasta -c 0.9 -M 8000 -T 4
+```

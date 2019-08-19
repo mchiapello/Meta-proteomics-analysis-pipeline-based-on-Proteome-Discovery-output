@@ -1,0 +1,42 @@
+---
+title: "宏基因组eggnog-mapper教程"
+author: "XYZ"
+date: "2019/2/27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  [eggnog-mapper数据库下载链接](http://eggnogdb.embl.de/download/)  
+
+  [eggnog项目链接](https://github.com/jhcepas/eggnog-mapper)
+
+```{bash,eval=F}
+conda create -n egg eggnog-mapper python=2.7
+cd /media/sf_data
+mkdir eggDatabase
+download_eggnog_data.py fuNOG --data_dir /media/sf_data/eggDatabase
+# pigz结合tar解压
+pigz -kdc OG_fasta.tar.gz | tar xf -
+# 用指定单一物种数据库的用法
+# --cpu 要比所有可用核数少，不然会在注释的时候报错
+# 耗时19m51.030s
+time emapper.py -i panamaNCBI3160.fasta -d bactNOG -o panamaNCBI3160HMM --data_dir /media/sf_data/eggDatabase --cpu 15 --usemem
+# 用diamond注释
+# 注释1,185条序列耗时16m56.540s
+time emapper.py -i panamaNCBI3160.fasta -o panamaNCBI3160 -m diamond --data_dir /media/sf_data/eggDatabase --cpu 15
+# 注释diamond生成的比对文件
+emapper.py --annotate_hits_table panamaNCBI3160.emapper.seed_orthologs -o panamaNCBI3160 --data_dir /media/sf_data/eggDatabase --cpu 15
+```
+  
+:   使用蛋白数据库的大小统计
+
+|file | format | type | num_seqs | sum_len | min_len | avg_len | max_len|
+|-----|--------|------|----------|---------|---------|---------|--------|
+|NCBIfullRmDupMin10Max2700Cluster90.fasta | FASTA | Protein | 8,797,708 | 2,777,724,902 | 11 | 315.7 |  2,700|
+|panamaProteinDatabaseRmDup.fasta | FASTA | Protein | 9,444,438 | 2,480,437,575 | 20 | 262.6 | 12,171|
+|panamaNCBI3160.fasta | FASTA | Protein | 1,185 | 443,208 | 55 | 374 | 1,919|
+
+**注释9,444,438条序列大约需要9444438/1185x17/60/24=94天，若要加快速度需要使用集群**
