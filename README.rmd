@@ -1,5 +1,5 @@
 ---
-title: "A Tale of Two Databases 📊"
+title: "A Tale of Two Databases 📚"
 author: "xyz"
 date: "2020/5/25"
 output: github_document
@@ -15,6 +15,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 * Impacts of protein database on soil metaproteomics. XIONG Y, ZHENG L, MENG XX, SHEN RF, LAN P. (in review) 🕐
 
+    - Reproduce this study
+    
+```{bash,eval=F}
+mkdir Proteomics
+cd Proteomics
+git clone https://github.com/xyz1396/Meta-proteomics-analysis-pipeline-based-on-Proteome-Discovery-output
+# Run the rmd files in Rstudio
+```
+
 (@) [Download mass spectral data and build databases](Download mass spectral data and build databases.Rmd)
 
 (@) [Calculate the protein sequence length of the two databases in detail For Table. 1](Calculate the protein sequence length of the two databases in detail For Table. 1.Rmd)
@@ -22,27 +31,32 @@ knitr::opts_chunk$set(echo = TRUE)
 (@) [Get Identified proteins, Coverage, Length, UpsetR, Venn For Fig. 2, Fig. S4, Fig. S1, Fig. 3](Get Identified proteins, Coverage, Length, UpsetR, Venn For Fig. 2, Fig. S4, Fig. S1, Fig. 3.Rmd)
 
 ![](compare length of identified proteins.png)  
-    + compare length of identified proteins  
+     
+     compare length of identified proteins  
   
 (@) [Volcano Plot For Fig. 4](Volcano Plot For Fig. 4.Rmd)
 
 ![](Meta DB VolcanoPlot.png)  
-    + Meta DB VolcanoPlot  
+    
+    Meta DB VolcanoPlot  
   
 (@) [Statistical comparison of microbial species identified by the two databases For Fig. 5, 6, Table. S4](Statistical comparison of microbial species identified by the two databases For Fig. 5, 6, Table. S4.rmd)
 
 ![](Correlation of abundance identified by the two databases in LP with histogram.png)
-    + Correlation of abundance identified by the two databases in LP with histogram 
+    
+    Correlation of abundance identified by the two databases in LP with histogram 
   
 (@) [Summary statistics of annotations For Fig. 7](Summary statistics of annotations For Fig. 7.Rmd)
 
 ![](Summary statistics of protein annotations.png)
-    + Summary statistics of protein annotations 
+    
+    Summary statistics of protein annotations 
     
 (@) [Enrichment analysis For Fig. 8, Table S7](Enrichment analysis For Fig. 8, Table S7.Rmd)
   
 ![](ncbiAndMetaGoMf.png)
-    + Enrichment analysis results 
+    
+    Enrichment analysis results 
 
 (@) [Draw phosphatase and phosphatase evolutionary tree and add species annotation for Fig. 9, S3](Draw phosphatase and phosphatase evolutionary tree and add species annotation for Fig. 9, S3.rmd)
 
@@ -50,21 +64,25 @@ knitr::opts_chunk$set(echo = TRUE)
 (@) [All identified proteins's heatmap For Fig. S2](All identified proteins's heatmap For Fig. S2.Rmd)
 
 ![](Meta DB heatmap.png) 
-    + The heatmap of abundance of protein identified by the Meta DB 
+    
+    The heatmap of abundance of protein identified by the Meta DB 
 
 (@) [Blast the protein sequences identified by the 2 databases to each other For Fig. S5](Blast the protein sequences identified by the 2 databases to each other For Fig. S5.rmd)
 
 ![](Percentage of identical matches.png)
-    + Percentage of identical matches 
+    
+    Percentage of identical matches 
 
 (@) [Statistical comparison of PSMs of microbial species identified by the two databases For Fig. S6](Statistical comparison of PSMs of microbial species identified by the two databases For Fig. S6.rmd)
 
 ![](PSMs of genera identified only by Meta DB and both DB.png)
-    + PSMs of genera identified only by Meta DB and both DB 
+    
+    PSMs of genera identified only by Meta DB and both DB 
 
 (@) [GO annotations of proteins with significantly differential abundance identified by the 2 DBs For Fig. S7](GO annotations of proteins with significantly differential abundance identified by the 2 DBs For Fig. S7.rmd)
 
 ![](PublicBpGOstatUpTop10.png)
-    + The amount of proteins with significantly differential abundance identified by the Public DB
+    
+    The amount of proteins with significantly differential abundance identified by the Public DB
 
 
