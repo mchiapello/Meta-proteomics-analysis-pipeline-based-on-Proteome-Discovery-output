@@ -1,0 +1,198 @@
+---
+title: "Draw phosphatase and phosphatase evolutionary tree and add species annotation for Fig. 9, S3"
+author: "xyz"
+date: "2020/5/13"
+output: html_document
+---
+
+### extract sequence 
+
+```{r Phosphatase}
+df<-readRDS("ncbiMasterProtein.rds")
+df2<-readRDS("metaMasterProtein.rds")
+
+#### Public ####
+goMapMf<-readRDS("ncbiGoMapMf.rds")
+goNameMf<-AnnotationDbi::select(x=GO.db::GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+judgeSignificance<-function(x,y){
+  if(is.na(x)|is.na(y)) return("no")
+  else if(x<=0.05){
+    if(y<=1/2) return ("down")
+    else if(y>=2) return ("up")
+    else return ("no")
+  }
+  else return("no")
+}
+changeAndSeq<-data.frame(id=df$Accession,change=mapply(judgeSignificance,
+                                                 df$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf<-cbind(tempDf[tempDf$go=="phosphatase activity",-4],database="public")
+idNameGoEC<-read.table("panamaNCBIgoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf<-merge(treeDf,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+
+#### meta ####
+goMapMf<-readRDS("MetaGoMapMf.rds")
+goNameMf<-AnnotationDbi::select(x=GO.db::GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+changeAndSeq<-data.frame(id=df2$Accession,change=mapply(judgeSignificance,
+                                                 df2$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df2$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df2$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf2<-cbind(tempDf[tempDf$go=="phosphatase activity",-4],database="meta")
+idNameGoEC<-read.table("panamaMetaGoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf2<-merge(treeDf2,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+treeDf3<-rbind(treeDf,treeDf2)
+
+#### extract sequence  ####
+
+# Classify the phosphatase according to Description
+treeDf3<-cbind(treeDf3,kind=as.character(treeDf3$Description),stringsAsFactors=F)
+treeDf3[treeDf3$Description!="acid phosphatase" & treeDf3$Description!="alkaline phosphatase",
+        "kind"]="other phosphatase"
+saveRDS(treeDf3,"phosphataseActivity.rds")
+treeDf3<-readRDS("phosphataseActivity.rds")
+# save as fasta
+seq<-as.character(treeDf3$seq)
+names(seq)<-as.character(treeDf3$id)
+protein<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(protein, "phosphataseActivity.fasta")
+```
+
+```{r Phospholipase}
+
+#### Public ####
+goMapMf<-readRDS("ncbiGoMapMf.rds")
+goNameMf<-AnnotationDbi::select(x=GO.db::GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+changeAndSeq<-data.frame(id=df$Accession,change=mapply(judgeSignificance,
+                                                 df$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf<-cbind(tempDf[tempDf$go=="phospholipase activity",-4],database="public")
+idNameGoEC<-read.table("panamaNCBIgoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf<-merge(treeDf,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+
+#### Meta ####
+goMapMf<-readRDS("MetaGoMapMf.rds")
+goNameMf<-AnnotationDbi::select(x=GO.db::GO.db, keys = goMapMf$GO,  keytype = "GOID",columns = "TERM" )
+changeAndSeq<-data.frame(id=df2$Accession,change=mapply(judgeSignificance,
+                                                 df2$`Abundance.Ratio.Adj..P-Value:.(low)./.(high)`,
+                                                 df2$`Abundance.Ratio:.(low)./.(high)`),
+                         seq=df2$Sequence)
+tempDf<-merge(changeAndSeq,data.frame(id=goMapMf$Gene,go=goNameMf$TERM),by="id")
+treeDf2<-cbind(tempDf[tempDf$go=="phospholipase activity",-4],database="meta")
+idNameGoEC<-read.table("panamaMetaGoEC.txt",sep="\t",header=T,stringsAsFactors=F,quote = "")
+treeDf2<-merge(treeDf2,idNameGoEC[,-3],by.x="id",by.y="SeqName")
+treeDf3<-rbind(treeDf,treeDf2)
+
+#### extract sequence  ####
+saveRDS(treeDf3,"phospholipaseActivity.rds")
+treeDf3<-readRDS("phospholipaseActivity.rds")
+treeDf3<-treeDf3[c(-22,-31),]
+
+# save as fasta
+seq<-as.character(treeDf3$seq)
+names(seq)<-as.character(treeDf3$id)
+protein<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(protein, "phospholipaseActivity.fasta")
+```
+
+### Build phylogentic tree
+
+Use MEGAx to align sequences by muscle algorithm. Construct neighbor-joining tree by bootstrap-method, repeating 1000 times.
+Original tree is saved in nwk format with bootstrap value
+
+### Phosphatase
+
+#### Sepieces annotations
+
+```{r Phosphatase}
+library(stringr)
+library(Biostrings)
+
+treeDf3<-readRDS("phosphataseActivity.rds")
+# Pick out the Acid phosphatase and the Alkaline phosphatase based on the previous tree
+phosphataseID<-read.table("phosphataseID.txt")
+treeDf3<-treeDf3[match(phosphataseID$V1,treeDf3$id),]
+
+# Read blast results
+df<-read.table("phosphatase blast results.txt",header = T,sep="\t")
+df<-df[!duplicated(df$Query_def),]
+df<-data.frame(id=df$Query_def,species=str_extract(df$Subject_def,"\\[.*\\]"))
+treeDf4<-dplyr::left_join(treeDf3,df,by = c("id" = "id"))
+treeDf4[,8]<-sapply(treeDf4[,8],as.character)
+description<-paste0(str_to_upper(paste0(str_sub(treeDf4$database,1,1),"-",
+                                                         str_sub(treeDf4$kind,1,2))),"-",treeDf4$species,
+                                                         " (",treeDf4$id,")")
+write.table(data.frame(seq=treeDf4$id,description=description),
+            "phosphataseID2kind.txt",col.names=F,row.names = F,quote=F)
+phosphataseSequence<-AAStringSet(treeDf4$seq)
+names(phosphataseSequence)<-treeDf4$id
+writeXStringSet(phosphataseSequence,"phosphataseSequenceWithID.fasta")
+names(phosphataseSequence)<-description
+writeXStringSet(phosphataseSequence,"phosphataseSequenceWithDescription.fasta")
+
+# output 2 leaves' sequnces
+names(phosphataseSequence)<-paste0(str_sub(treeDf4$species,2L,-2L),"(",treeDf4$id,")")
+writeXStringSet(phosphataseSequence[1:17],"leaf1AlkalinePhosphatase.fasta")
+writeXStringSet(phosphataseSequence[18:28],"leaf2AcidPhosphatase.fasta")
+```
+
+#### Motif annotations
+
+```{bash eval=F}
+# -mod zoops Indicates that each sequence contains 0 or more non-repeating motifs
+meme phosphataseSequence.fasta -protein -oc phosphataseMotif/ -mod zoops -nmotifs 15 -minw 30 -maxw 200 -p 4
+```
+
+```{r}
+library(XML)
+
+phosphataseXml<-xmlParse("phosphataseMotif.xml",encoding="UTF-8")
+xmltop <- xmlRoot(phosphataseXml)
+# Extract the Motif name and sequence
+motifMatrix<-xmlSApply(xmltop[[3]], xmlAttrs)
+seq<-as.character(motifMatrix[2,])
+names(seq)<-as.character(motifMatrix[1,])
+motif<- Biostrings::AAStringSet(seq)
+Biostrings::writeXStringSet(motif, "phosphataseMotif.fasta")
+```
+[NCBI Conserved Domain Database](https://www.ncbi.nlm.nih.gov/Structure/bwrpsb/bwrpsb.cgi?)
+
+### Phospholipase
+
+```{r}
+treeDf3<-readRDS("phospholipaseActivity.rds")
+treeDf3<-cbind(treeDf3,kind=as.character(treeDf3$Description),stringsAsFactors=F)
+treeDf3[treeDf3$Description=="putative Phospholipase C","Description"]<-"Phospholipase C"
+treeDf3[treeDf3$Description=="phospholipase C, phosphocholine-specific","Description"]<-"Phospholipase C"
+df<-read.table("phospholipase blast results.txt",header = T,sep="\t")
+df<-df[!duplicated(df$Query_def),]
+treeDf3<-treeDf3[as.character(treeDf3$id) %in% as.character(df$Query_def),]
+df<-data.frame(id=df$Query_def,species=str_extract(df$Subject_def,"\\[.*\\]"))
+treeDf4<-dplyr::left_join(treeDf3,df,by = c("id" = "id"))
+treeDf4[,8]<-sapply(treeDf4[,8],as.character)
+description<-paste0(str_to_upper(paste0(str_sub(treeDf4$database,1,1))),"-",treeDf4$species," (",treeDf4$id,")")
+write.table(data.frame(seq=treeDf4$id,description=description),
+            "phospholipaseID2kind.txt",col.names=F,row.names = F,quote=F)
+phospholipidSequence<-AAStringSet(treeDf4$seq)
+names(phospholipidSequence)<-treeDf4$id
+writeXStringSet(phospholipidSequence,"phospholipaseSequenceWithID.fasta")
+phospholipidSequence<-AAStringSet(treeDf4$seq)
+names(phospholipidSequence)<-description
+writeXStringSet(phospholipidSequence,"phospholipaseSequenceWithDescription.fasta")
+
+# output 2 leaves' sequnces
+names(phospholipidSequence)<-paste0(str_sub(treeDf4$species,2L,-2L),"(",treeDf4$id,")")
+leaf1<-read.table("leaf1.txt")
+writeXStringSet(phospholipidSequence[match(leaf1$V1,treeDf4$id)],"leaf1phospholipase.fasta")
+leaf2<-read.table("leaf2.txt")
+writeXStringSet(phospholipidSequence[match(leaf2$V1,treeDf4$id)],"leaf2phospholipase.fasta")
+```
+
+### Visualization
+
+The visualization of phylogenetic tree and motif was accomplished by TBtools
+The visualization of sequence was accomplished by ENDscript

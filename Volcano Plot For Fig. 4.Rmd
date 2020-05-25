@@ -1,0 +1,43 @@
+---
+title: "Volcano Plot"
+author: "xyz"
+date: "2020/4/27"
+output: html_document
+---
+
+```{r}
+df<-readRDS("ncbiMasterProtein.rds")
+df2<-readRDS("metaMasterProtein.rds")
+library(ggplot2)
+library(dplyr)
+drawVolcanoPlot <- function(tempDF,JudgeMode,fileName) {
+  FDRName<-paste0("Abundance.Ratio.Adj..P-Value:.",JudgeMode)
+  FCName<-paste0("Abundance.Ratio:.",JudgeMode)
+  df<-filter(tempDF,!is.na(tempDF[,FDRName]),!is.na(tempDF[,FCName]))[,c(FDRName,FCName)]
+  colnames(df)<-c("FDR","FD")
+  # The Standard of significance was fold change >2, P value < 0.05
+  judgeSignificance<-function(x,y){
+    if(x<=0.05){
+      if(y<=1/2) return ("down")
+      else if(y>=2) return ("up")
+      else return ("no")
+    }
+    else return("no")
+  }
+  
+  df<-cbind(df,significance=mapply(judgeSignificance,df$FDR,df$FD))
+  ggplot(df,aes(log2(FD),-1*log10(FDR)))+
+    geom_point(aes(fill = significance),shape=21,size = 5)+
+    theme(text = element_text(size = 30))+
+    scale_fill_discrete(labels = paste(levels(df$significance), table(df$significance)))+
+    # title=paste("soil protein",JudgeMode),
+    labs(x=expression(log[2](FC)), y=expression(-log[10](FDR)))+
+    geom_hline(yintercept=-log10(0.05),linetype=4)+geom_vline(xintercept=c(-log2(2),log2(2)),linetype=4)+
+    ggsave(fileName,width = 10.24, height = 7.68,dpi=100)
+}
+ 
+# Public DB
+drawVolcanoPlot(df,"(low)./.(high)","Public DB volcanoPlot.png")
+# Meta DB
+drawVolcanoPlot(df2,"(low)./.(high)","Meta DB VolcanoPlot.png")
+```

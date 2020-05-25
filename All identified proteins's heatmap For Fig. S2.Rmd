@@ -1,0 +1,41 @@
+---
+title: "all identified proteins's heatmap"
+author: "xyz"
+date: "2020/4/27"
+output: html_document
+---
+
+```{r}
+df<-readRDS("ncbiMasterProtein.rds")
+df2<-readRDS("metaMasterProtein.rds")
+
+ncbi<-df[,32:39]
+colnames(ncbi)<-c(paste0(rep(c("P-rich","P-deficient"),each=4),c(1:4,1:4)))
+ncbi[is.na(ncbi)]<-0
+ncbi<-ncbi[rowSums(ncbi)>0,]
+colgroup<-data.frame(P=factor(rep(c("P-rich","P-deficient"),each=4)))
+row.names(colgroup)<-colnames(ncbi)[1:8]
+# ncbi<-prop.table(as.matrix(ncbi),2)
+pheatmap::pheatmap(ncbi, 
+                   show_rownames=F,fontsize = 15,
+                   # RdBu RdYlBu 
+                   color=colorRampPalette(rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
+                   cluster_row=T,cluster_col=T,scale="row",annotation_col=colgroup
+                   ,filename ="Public DB heatmap.png"
+                   )
+
+meta<-df2[,37:44]
+colnames(meta)<-c(paste0(rep(c("P-rich","P-deficient"),each=4),c(1:4,1:4)))
+meta[is.na(meta)]<-0
+meta<-meta[rowSums(meta)>0,]
+colgroup<-data.frame(P=factor(rep(c("P-rich","P-deficient"),each=4)))
+row.names(colgroup)<-colnames(meta)[1:8]
+# meta<-prop.table(as.matrix(meta),2)
+pheatmap::pheatmap(meta, 
+                   show_rownames=F,fontsize = 15,
+                   color=colorRampPalette(rev(RColorBrewer::brewer.pal(n = 7, name ="RdYlBu")))(100),
+                   cluster_row=T,cluster_col=T,scale="row",annotation_col=colgroup,
+                   filename ="Meta DB heatmap.png"
+                   )
+```
+
